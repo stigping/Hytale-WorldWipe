@@ -1,0 +1,21 @@
+$C = "../Common.ui";
+
+@LabelStyle = (
+  Default: (
+    LabelStyle: (TextColor: #c6d2e0)
+  ),
+  Hovered: (
+    Background: #000000(0.2)
+  )
+);
+
+Group {
+  Anchor: (Width: 320);
+  LayoutMode: Left;
+
+  TextButton #Button {
+    Padding: (Full: 6);
+    Style: @LabelStyle;
+    FlexWeight: 1;
+  }
+}

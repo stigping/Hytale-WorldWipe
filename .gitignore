@@ -1,0 +1,33 @@
+# Gradle
+/.gradle/
+/build/
+/out/
+/target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+
+# IDE
+/.idea/
+/.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS + misc
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+*.swp
+*.orig
+*.rej
+*.class
+
+# Hytale local environment
+/.hytale/
+/server/
+/libs/
+/Common/
+**/.cache/

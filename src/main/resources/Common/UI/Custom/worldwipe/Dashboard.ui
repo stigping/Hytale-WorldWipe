@@ -1,0 +1,538 @@
+$C = "../Common.ui";
+
+$C.@DecoratedContainer {
+  Anchor: (Width: 560, Height: 720);
+
+  #Title {
+    Label {
+      Text: "WorldWipe";
+      Style: (...$C.@TitleStyle, HorizontalAlignment: Center);
+      Padding: (Horizontal: 10);
+    }
+  }
+
+  #Content {
+    LayoutMode: Top;
+    Padding: (Horizontal: 14);
+
+    Group {
+      LayoutMode: Left;
+      Anchor: (Height: 26);
+
+      $C.@SmallSecondaryTextButton #RefreshButton {
+        Text: "Refresh";
+        Anchor: (Width: 100, Height: 26);
+      }
+
+      Group { FlexWeight: 1; }
+
+      Label {
+        Text: "v1.0.0 • StigPing";
+        Anchor: (Height: 18);
+        Style: (FontSize: 12, TextColor: #8ea0b5, HorizontalAlignment: Center, VerticalAlignment: Center);
+      }
+
+      Group { FlexWeight: 1; }
+
+      $C.@SmallSecondaryTextButton #CloseButton {
+        Text: "Close";
+        Anchor: (Width: 90, Height: 26);
+      }
+    }
+
+    Group { Anchor: (Height: 10); }
+
+    $C.@PanelTitle { @Text = "Status"; }
+
+    Group #StatusPanel {
+      LayoutMode: Top;
+      Anchor: (Height: 100);
+      Padding: (Full: 12);
+      Background: #0f1722(0.6);
+
+      Label #StatusText {
+        Text: "Next wipe: Not scheduled";
+        Anchor: (Height: 24);
+        Style: (FontSize: 16, TextColor: #d7e1ed, HorizontalAlignment: Center, RenderBold: true, Wrap: true);
+      }
+
+      Label #ScheduleSummary {
+        Text: "Protected worlds: default";
+        Anchor: (Height: 18);
+        Style: (FontSize: 12, TextColor: #9aa9bd, HorizontalAlignment: Center, Wrap: true);
+      }
+
+      Group { Anchor: (Height: 6); }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 28);
+
+        Label #SchedulingStatus {
+          Text: "Scheduling: Disabled";
+          Anchor: (Height: 18);
+          Style: (FontSize: 12, TextColor: #9aa9bd, HorizontalAlignment: Center, Wrap: true);
+        }
+
+        Group { Anchor: (Width: 12); }
+
+        $C.@SecondaryTextButton #ToggleScheduleButton {
+          Text: "Enable";
+          Anchor: (Width: 120, Height: 28);
+        }
+      }
+    }
+
+    Group { Anchor: (Height: 12); }
+
+    Group #HomeView {
+      LayoutMode: Top;
+      Anchor: (Height: 280);
+      Visible: true;
+
+      $C.@PanelTitle { @Text = "Menu"; }
+
+      Group { Anchor: (Height: 8); }
+
+      Group { LayoutMode: Center; Anchor: (Height: 34);
+        $C.@SecondaryTextButton #NavSchedules { Text: "Schedules"; Anchor: (Width: 260, Height: 34); }
+      }
+      Group { Anchor: (Height: 6); }
+      Group { LayoutMode: Center; Anchor: (Height: 34);
+        $C.@SecondaryTextButton #NavProtected { Text: "Protected Worlds"; Anchor: (Width: 260, Height: 34); }
+      }
+      Group { Anchor: (Height: 6); }
+      Group { LayoutMode: Center; Anchor: (Height: 34);
+        $C.@SecondaryTextButton #NavForce { Text: "Force Wipe"; Anchor: (Width: 260, Height: 34); }
+      }
+      Group { Anchor: (Height: 6); }
+      Group { LayoutMode: Center; Anchor: (Height: 34);
+        $C.@SecondaryTextButton #NavStatus { Text: "Status"; Anchor: (Width: 260, Height: 34); }
+      }
+    }
+
+    Group #ScheduleListView {
+      LayoutMode: Top;
+      Anchor: (Height: 300);
+      Visible: false;
+
+      $C.@PanelTitle { @Text = "Schedules"; }
+
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 180);
+        Padding: (Full: 12);
+        Background: #0f1722(0.6);
+
+        Label #ScheduleListHint {
+          Text: "Select a world to view or edit a schedule.";
+          Anchor: (Height: 18);
+          Style: (FontSize: 12, TextColor: #9aa9bd);
+        }
+
+        Group { Anchor: (Height: 6); }
+
+        Group #ScheduledWorldList {
+          Anchor: (Height: 120);
+          LayoutMode: TopScrolling;
+          ScrollbarStyle: $C.@DefaultScrollbarStyle;
+        }
+
+        Label #ScheduledWorldListEmpty {
+          Text: "No eligible worlds.";
+          Anchor: (Height: 18);
+          Visible: false;
+          Style: (FontSize: 12, TextColor: #6a7686, HorizontalAlignment: Center);
+        }
+      }
+
+      Group { Anchor: (Height: 8); }
+
+      Group #CreateWorldRow {
+        LayoutMode: Left;
+        Anchor: (Height: 34);
+
+        $C.@TextField #CreateWorldInput {
+          Anchor: (Width: 240, Height: 34);
+          PlaceholderText: "new_world";
+        }
+
+        Group { Anchor: (Width: 8); }
+
+        $C.@SmallSecondaryTextButton #CreateWorldButton {
+          Text: "Create";
+          Anchor: (Width: 90, Height: 34);
+        }
+      }
+
+      Group { Anchor: (Height: 8); }
+
+      Group {
+        LayoutMode: Right;
+        Anchor: (Height: 28);
+
+        $C.@SmallSecondaryTextButton #BackFromScheduleList {
+          Text: "Back";
+          Anchor: (Width: 80, Height: 28);
+        }
+      }
+    }
+
+    Group #ScheduleEditorView {
+      LayoutMode: Top;
+      Anchor: (Height: 390);
+      Visible: false;
+
+      $C.@PanelTitle { @Text = "Schedule Editor"; }
+
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 310);
+        Padding: (Full: 12);
+        Background: #0f1722(0.6);
+
+        Label #ScheduleWorldLabel {
+          Text: "World: none";
+          Anchor: (Height: 18);
+          Style: (FontSize: 12, TextColor: #c3cfdd, Wrap: true);
+        }
+
+        Label #CurrentScheduleLabel {
+          Text: "Current: not scheduled";
+          Anchor: (Height: 18);
+          Style: (FontSize: 12, TextColor: #9aa9bd, Wrap: true);
+        }
+
+        Group { Anchor: (Height: 8); }
+
+        Group #ModeRow {
+          LayoutMode: Left;
+          Anchor: (Height: 34);
+
+          Label {
+            Text: "Mode";
+            Anchor: (Width: 90);
+            Style: (FontSize: 13, TextColor: #9aa9bd, VerticalAlignment: Center);
+          }
+
+          $C.@DropdownBox #ModeDropdown {
+            Anchor: (Width: 330, Height: 32);
+          }
+        }
+
+        Group { Anchor: (Height: 8); }
+
+        Group #DayRow {
+          LayoutMode: Left;
+          Anchor: (Height: 34);
+
+          Label {
+            Text: "Day";
+            Anchor: (Width: 90);
+            Style: (FontSize: 13, TextColor: #9aa9bd, VerticalAlignment: Center);
+          }
+
+          $C.@DropdownBox #DayDropdown {
+            Anchor: (Width: 330, Height: 32);
+          }
+        }
+
+        Group { Anchor: (Height: 8); }
+
+        Group #DateRow {
+          LayoutMode: Left;
+          Anchor: (Height: 34);
+
+          Label {
+            Text: "Date";
+            Anchor: (Width: 90);
+            Style: (FontSize: 13, TextColor: #9aa9bd, VerticalAlignment: Center);
+          }
+
+          $C.@DropdownBox #DateDropdown {
+            Anchor: (Width: 330, Height: 32);
+          }
+        }
+
+        Group { Anchor: (Height: 6); }
+
+        Label #DateHint {
+          Text: "If the month is shorter, the last day is used.";
+          Anchor: (Height: 16);
+          Style: (FontSize: 11, TextColor: #7e8ca1, Wrap: true);
+        }
+
+        Group { Anchor: (Height: 8); }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 34);
+
+          Label {
+            Text: "Time";
+            Anchor: (Width: 90);
+            Style: (FontSize: 13, TextColor: #9aa9bd, VerticalAlignment: Center);
+          }
+
+          $C.@DropdownBox #TimeDropdown {
+            Anchor: (Width: 330, Height: 32);
+          }
+        }
+
+        Group { Anchor: (Height: 8); }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Height: 34);
+
+          Label {
+            Text: "Zone";
+            Anchor: (Width: 90);
+            Style: (FontSize: 13, TextColor: #9aa9bd, VerticalAlignment: Center);
+          }
+
+          $C.@DropdownBox #ZoneDropdown {
+            Anchor: (Width: 330, Height: 32);
+          }
+        }
+
+        Group { Anchor: (Height: 8); }
+
+        Group #RegenRow {
+          LayoutMode: Left;
+          Anchor: (Height: 26);
+
+          Label {
+            Text: "Regen";
+            Anchor: (Width: 90);
+            Style: (FontSize: 13, TextColor: #9aa9bd, VerticalAlignment: Center);
+          }
+
+          $C.@CheckBox #RegenerateCheck {}
+
+          Group { Anchor: (Width: 8); }
+
+          Label {
+            Text: "Regenerate after wipe";
+            Anchor: (Height: 18);
+            Style: (FontSize: 12, TextColor: #9aa9bd, VerticalAlignment: Center);
+          }
+        }
+      }
+
+      Group { Anchor: (Height: 8); }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 40);
+
+        $C.@TextButton #ApplyButton {
+          Text: "Apply";
+          Anchor: (Width: 130, Height: 38);
+        }
+
+        Group { Anchor: (Width: 12); }
+
+        $C.@SecondaryTextButton #RemoveButton {
+          Text: "Remove";
+          Anchor: (Width: 130, Height: 38);
+        }
+
+        Group { Anchor: (Width: 12); }
+
+        $C.@SmallSecondaryTextButton #BackFromScheduleEditor {
+          Text: "Back";
+          Anchor: (Width: 90, Height: 30);
+        }
+      }
+    }
+
+    Group #ProtectedView {
+      LayoutMode: Top;
+      Anchor: (Height: 260);
+      Visible: false;
+
+      $C.@PanelTitle { @Text = "Protected Worlds"; }
+
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 200);
+        Padding: (Full: 12);
+        Background: #0f1722(0.6);
+
+        Label #ProtectedSummaryText {
+          Text: "Protected worlds: default";
+          Anchor: (Height: 18);
+          Style: (FontSize: 12, TextColor: #c3cfdd);
+        }
+
+        Group { Anchor: (Height: 6); }
+
+        Label {
+          Text: "Loaded worlds (add):";
+          Anchor: (Height: 16);
+          Style: (FontSize: 12, TextColor: #9aa9bd);
+        }
+
+        Group #ProtectedWorldList {
+          Anchor: (Height: 60);
+          LayoutMode: TopScrolling;
+          ScrollbarStyle: $C.@DefaultScrollbarStyle;
+        }
+
+        Label #ProtectedWorldListEmpty {
+          Text: "No loaded worlds.";
+          Anchor: (Height: 16);
+          Visible: false;
+          Style: (FontSize: 12, TextColor: #6a7686, HorizontalAlignment: Center);
+        }
+
+        Group { Anchor: (Height: 6); }
+
+        Label {
+          Text: "Protected worlds (remove):";
+          Anchor: (Height: 16);
+          Style: (FontSize: 12, TextColor: #9aa9bd);
+        }
+
+        Group #ProtectedCurrentList {
+          Anchor: (Height: 60);
+          LayoutMode: TopScrolling;
+          ScrollbarStyle: $C.@DefaultScrollbarStyle;
+        }
+
+        Label #ProtectedCurrentListEmpty {
+          Text: "No protected worlds.";
+          Anchor: (Height: 16);
+          Visible: false;
+          Style: (FontSize: 12, TextColor: #6a7686, HorizontalAlignment: Center);
+        }
+      }
+
+      Group { Anchor: (Height: 8); }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 34);
+
+        $C.@SmallSecondaryTextButton #ProtectedAddButton {
+          Text: "Add";
+          Anchor: (Width: 80, Height: 34);
+        }
+
+        Group { Anchor: (Width: 10); }
+
+        $C.@SmallSecondaryTextButton #ProtectedRemoveButton {
+          Text: "Remove";
+          Anchor: (Width: 100, Height: 34);
+        }
+
+        Group { Anchor: (Width: 10); }
+
+        $C.@SmallSecondaryTextButton #BackFromProtected {
+          Text: "Back";
+          Anchor: (Width: 80, Height: 28);
+        }
+      }
+    }
+
+    Group #ForceView {
+      LayoutMode: Top;
+      Anchor: (Height: 240);
+      Visible: false;
+
+      $C.@PanelTitle { @Text = "Force Wipe"; }
+
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 140);
+        Padding: (Full: 12);
+        Background: #0f1722(0.6);
+
+        Label #ForceWorldLabel {
+          Text: "Target: none";
+          Anchor: (Height: 18);
+          Style: (FontSize: 12, TextColor: #c3cfdd, Wrap: true);
+        }
+
+        Label {
+          Text: "Choose a world to wipe immediately.";
+          Anchor: (Height: 18);
+          Style: (FontSize: 12, TextColor: #9aa9bd);
+        }
+
+        Group { Anchor: (Height: 6); }
+
+        Group #ForceWorldList {
+          Anchor: (Height: 70);
+          LayoutMode: TopScrolling;
+          ScrollbarStyle: $C.@DefaultScrollbarStyle;
+        }
+
+        Label #ForceWorldListEmpty {
+          Text: "No eligible worlds.";
+          Anchor: (Height: 18);
+          Visible: false;
+          Style: (FontSize: 12, TextColor: #6a7686, HorizontalAlignment: Center);
+        }
+      }
+
+      Group { Anchor: (Height: 8); }
+
+      Group { FlexWeight: 1; }
+
+      Group {
+        LayoutMode: Center;
+        Anchor: (Height: 40);
+
+        $C.@CancelTextButton #ForceWipeButton {
+          Text: "Force Wipe";
+          Anchor: (Width: 200, Height: 38);
+        }
+
+        Group { Anchor: (Width: 12); }
+
+        $C.@SmallSecondaryTextButton #BackFromForce {
+          Text: "Back";
+          Anchor: (Width: 90, Height: 30);
+        }
+      }
+    }
+
+    Group #StatusView {
+      LayoutMode: Top;
+      Anchor: (Height: 180);
+      Visible: false;
+
+      $C.@PanelTitle { @Text = "Status Details"; }
+
+      Group {
+        LayoutMode: Top;
+        Anchor: (Height: 112);
+        Padding: (Full: 12);
+        Background: #0f1722(0.6);
+
+        Label #StatusDetailsText {
+          Text: "Scheduling: Disabled";
+          Anchor: (Height: 36);
+          Style: (FontSize: 12, TextColor: #9aa9bd, Wrap: true);
+        }
+      }
+
+      Group { Anchor: (Height: 8); }
+
+      Group {
+        LayoutMode: Right;
+        Anchor: (Height: 28);
+
+        $C.@SmallSecondaryTextButton #BackFromStatus {
+          Text: "Back";
+          Anchor: (Width: 80, Height: 28);
+        }
+      }
+    }
+
+    Group { Anchor: (Height: 8); }
+  }
+}
+

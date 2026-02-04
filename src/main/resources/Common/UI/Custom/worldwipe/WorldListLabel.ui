@@ -1,0 +1,11 @@
+$C = "../Common.ui";
+
+Group {
+  Anchor: (Width: 320);
+  LayoutMode: Left;
+
+  Label #Label {
+    Padding: (Full: 6);
+    Style: (FontSize: 13, TextColor: #c6d2e0, Wrap: true);
+  }
+}
