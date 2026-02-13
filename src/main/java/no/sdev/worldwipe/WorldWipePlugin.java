@@ -5,6 +5,7 @@ import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.WorldConfig;
 import no.sdev.worldwipe.commands.WorldWipePluginCommand;
 import no.sdev.worldwipe.config.WorldWipeConfig;
 
@@ -278,15 +279,16 @@ public class WorldWipePlugin extends JavaPlugin {
         Universe universe = Universe.get();
         boolean shouldRegenerate = shouldRegenerateWorld(targetWorldName);
         World resettingWorld = universe.getWorld(targetWorldName);
+        WorldConfig regenerationTemplate = captureRegenerationTemplate(targetWorldName, resettingWorld, shouldRegenerate);
 
         if (resettingWorld != null) {
             no.sdev.worldwipe.world.WorldEvacuationService.evacuate(resettingWorld, destinationWorld);
-            scheduleWorldCleanup(targetWorldName, shouldRegenerate, 0);
+            scheduleWorldCleanup(targetWorldName, shouldRegenerate, 0, regenerationTemplate);
             return true;
         }
 
         if (shouldRegenerate || universe.isWorldLoadable(targetWorldName)) {
-            scheduleWorldCleanup(targetWorldName, shouldRegenerate, 0);
+            scheduleWorldCleanup(targetWorldName, shouldRegenerate, 0, regenerationTemplate);
             return true;
         }
 
@@ -708,7 +710,8 @@ public class WorldWipePlugin extends JavaPlugin {
             no.sdev.worldwipe.world.WorldEvacuationService.evacuate(resettingWorld, destinationWorld);
 
             boolean shouldRegenerate = shouldRegenerateWorld(worldName);
-            scheduleWorldCleanup(worldName, shouldRegenerate, 0);
+            WorldConfig regenerationTemplate = captureRegenerationTemplate(worldName, resettingWorld, shouldRegenerate);
+            scheduleWorldCleanup(worldName, shouldRegenerate, 0, regenerationTemplate);
 
             return new WipeResult(true, "Wipe started for '" + worldName + "'. Evacuating players...");
         } catch (Exception e) {
@@ -1098,7 +1101,7 @@ public class WorldWipePlugin extends JavaPlugin {
         }
     }
 
-    private void scheduleWorldCleanup(String worldName, boolean regenerate, int attempt) {
+    private void scheduleWorldCleanup(String worldName, boolean regenerate, int attempt, WorldConfig regenerationTemplate) {
         startSchedulerIfNeeded();
 
         if (scheduler == null) {
@@ -1118,7 +1121,7 @@ public class WorldWipePlugin extends JavaPlugin {
                     boolean deleted = no.sdev.worldwipe.world.WorldEvacuationService.deleteWorldFromDisk(worldName);
                     if (!deleted) {
                         if (attempt < maxAttempts) {
-                            scheduleWorldCleanup(worldName, regenerate, attempt + 1);
+                            scheduleWorldCleanup(worldName, regenerate, attempt + 1, regenerationTemplate);
                             return;
                         }
                         LOGGER.at(Level.WARNING).log("[WorldWipe] Failed to delete world '%s' from disk.", worldName);
@@ -1127,7 +1130,7 @@ public class WorldWipePlugin extends JavaPlugin {
                     }
 
                     if (regenerate) {
-                        no.sdev.worldwipe.world.WorldRegenerationService.regenerateWorld(worldName)
+                        no.sdev.worldwipe.world.WorldRegenerationService.regenerateWorld(worldName, regenerationTemplate)
                                 .exceptionally(error -> {
                                     LOGGER.at(Level.WARNING).withCause(error)
                                             .log("[WorldWipe] Failed to regenerate world '%s'.", worldName);
@@ -1144,7 +1147,7 @@ public class WorldWipePlugin extends JavaPlugin {
 
                 if (resettingWorld.getPlayerRefs() != null && !resettingWorld.getPlayerRefs().isEmpty()) {
                     if (attempt < maxAttempts) {
-                        scheduleWorldCleanup(worldName, regenerate, attempt + 1);
+                        scheduleWorldCleanup(worldName, regenerate, attempt + 1, regenerationTemplate);
                         return;
                     }
                     LOGGER.at(Level.WARNING).log(
@@ -1159,7 +1162,7 @@ public class WorldWipePlugin extends JavaPlugin {
                 boolean deleted = no.sdev.worldwipe.world.WorldEvacuationService.deleteWorldFromDisk(resettingWorld);
                 if (!deleted) {
                     if (attempt < maxAttempts) {
-                        scheduleWorldCleanup(worldName, regenerate, attempt + 1);
+                        scheduleWorldCleanup(worldName, regenerate, attempt + 1, regenerationTemplate);
                         return;
                     }
                     LOGGER.at(Level.WARNING).log("[WorldWipe] Failed to delete world '%s' from disk.", worldName);
@@ -1168,7 +1171,7 @@ public class WorldWipePlugin extends JavaPlugin {
                 }
 
                 if (regenerate) {
-                    no.sdev.worldwipe.world.WorldRegenerationService.regenerateWorld(worldName)
+                    no.sdev.worldwipe.world.WorldRegenerationService.regenerateWorld(worldName, regenerationTemplate)
                             .exceptionally(error -> {
                                 LOGGER.at(Level.WARNING).withCause(error)
                                         .log("[WorldWipe] Failed to regenerate world '%s'.", worldName);
@@ -1184,6 +1187,29 @@ public class WorldWipePlugin extends JavaPlugin {
                 wipeInProgress.set(false);
             }
         }, delayMs, TimeUnit.MILLISECONDS);
+    }
+
+    private WorldConfig captureRegenerationTemplate(String worldName, World loadedWorld, boolean shouldRegenerate) {
+        if (!shouldRegenerate || worldName == null || worldName.isBlank()) {
+            return null;
+        }
+        try {
+            if (loadedWorld != null && loadedWorld.getWorldConfig() != null) {
+                return loadedWorld.getWorldConfig();
+            }
+
+            Universe universe = Universe.get();
+            if (universe == null || !universe.isWorldLoadable(worldName)) {
+                return null;
+            }
+
+            Path savePath = universe.getPath().resolve("worlds").resolve(worldName);
+            return universe.getWorldConfigProvider().load(savePath, worldName).join();
+        } catch (Exception e) {
+            LOGGER.at(Level.WARNING).withCause(e)
+                    .log("[WorldWipe] Could not capture regeneration template for world '%s'.", worldName);
+            return null;
+        }
     }
 
     private List<String> normalizeProtectedWorlds(List<String> worldNames) {
