@@ -51,7 +51,7 @@ public class InfoSubCommand extends CommandBase {
         context.sendMessage(Message.raw(""));
         context.sendMessage(Message.raw("=== WorldWipe Info ==="));
         context.sendMessage(Message.raw("Name: WorldWipe"));
-        context.sendMessage(Message.raw("Version: 1.0.0"));
+        context.sendMessage(Message.raw("Version: 1.0.3"));
         context.sendMessage(Message.raw("Author: StigPing"));
         context.sendMessage(Message.raw("Status: " + (plugin != null ? "Running" : "Not loaded")));
         context.sendMessage(Message.raw("===================="));
