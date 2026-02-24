@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'no.sdev.worldwipe'
-version = '1.0.0'
+version = '1.0.3'
 
 repositories {
     mavenCentral()
@@ -21,7 +21,7 @@ repositories {
 
 dependencies {
     // Hytale Server API from official Maven repository
-    compileOnly 'com.hypixel.hytale:Server:2026.01.24-6e2d4fc36'
+    compileOnly 'com.hypixel.hytale:Server:2026.02.18-f3b8fff95'
     // JSR305 annotations (@Nonnull, @Nullable)
     compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
     implementation 'com.google.code.gson:gson:2.10.1'
@@ -32,6 +32,14 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
     }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll([
+            "-Xlint:deprecation",
+            "-Xlint:unchecked",
+            "-Werror"
+    ])
 }
 
 shadowJar {
@@ -68,3 +76,5 @@ tasks.register('watch') {
         println "Run 'gradle build --continuous' for auto-rebuild on file changes."
     }
 }
+
+

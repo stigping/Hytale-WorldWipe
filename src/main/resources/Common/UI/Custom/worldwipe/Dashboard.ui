@@ -27,7 +27,7 @@ $C.@DecoratedContainer {
       Group { FlexWeight: 1; }
 
       Label {
-        Text: "v1.0.0 • StigPing";
+        Text: "v1.0.3 - StigPing";
         Anchor: (Height: 18);
         Style: (FontSize: 12, TextColor: #8ea0b5, HorizontalAlignment: Center, VerticalAlignment: Center);
       }
@@ -349,7 +349,7 @@ $C.@DecoratedContainer {
 
     Group #ProtectedView {
       LayoutMode: Top;
-      Anchor: (Height: 260);
+      Anchor: (Height: 280);
       Visible: false;
 
       $C.@PanelTitle { @Text = "Protected Worlds"; }
