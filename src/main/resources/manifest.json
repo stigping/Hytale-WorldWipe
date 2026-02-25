@@ -1,10 +1,12 @@
-{
+﻿{
   "Group": "no.sdev",
   "Name": "WorldWipe",
-  "Version": "1.0.0",
+  "Version": "1.0.3",
   "Description": "A Hytale server mod for wiping specific worlds on a schedule!",
   "Authors": [{"Name": "StigPing"}],
   "Main": "no.sdev.worldwipe.WorldWipePlugin",
   "LoadOrder": "POSTWORLD",
   "IncludesAssetPack": true
 }
+
+

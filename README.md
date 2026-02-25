@@ -67,6 +67,10 @@ Example:
 ```yml
 schedulingEnabled: true
 regenerateOnWipe: false
+offlineTrackingEnabled: true
+offlineTrackingSaveFile: true
+offlineTrackingMaxDays: 90
+offlineTrackingMode: ALL
 protectedWorld: [default, hub]
 worlds:
   resource:
@@ -94,6 +98,12 @@ worlds:
 - DAILY: pick a time
 - WEEKLY: pick a weekday + time
 - MONTHLY: pick a day of month (1-31). If the month is shorter, the last day is used.
+
+### Offline Wipe Tracking
+- offlineTrackingEnabled: redirect players who were offline during a wipe
+- offlineTrackingSaveFile: persist last-seen data to disk
+- offlineTrackingMaxDays: prune entries older than N days (0 disables pruning)
+- offlineTrackingMode: ALL or RESET_WORLD_ONLY
 
 ## Development
 Build the mod:

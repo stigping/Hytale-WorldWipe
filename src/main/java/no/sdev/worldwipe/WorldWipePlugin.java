@@ -1,10 +1,23 @@
 package no.sdev.worldwipe;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
+import com.hypixel.hytale.component.Holder;
+import com.hypixel.hytale.event.EventRegistration;
 import com.hypixel.hytale.logger.HytaleLogger;
+import com.hypixel.hytale.math.vector.Transform;
+import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
+import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
+import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.WorldConfig;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.hypixel.hytale.server.core.universe.world.spawn.ISpawnProvider;
 import no.sdev.worldwipe.commands.WorldWipePluginCommand;
 import no.sdev.worldwipe.config.WorldWipeConfig;
 
@@ -12,6 +25,7 @@ import javax.annotation.Nonnull;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.lang.reflect.Type;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,7 +38,10 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -36,6 +53,9 @@ public class WorldWipePlugin extends JavaPlugin {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
     private static WorldWipePlugin instance;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Type STRING_MAP_TYPE = new TypeToken<Map<String, String>>() {
+    }.getType();
 
     private static final DayOfWeek DEFAULT_SCHEDULE_DAY = DayOfWeek.MONDAY;
     private static final LocalTime DEFAULT_SCHEDULE_TIME = LocalTime.of(6, 0);
@@ -47,8 +67,15 @@ public class WorldWipePlugin extends JavaPlugin {
         MONTHLY
     }
 
+    private enum OfflineTrackingMode {
+        ALL,
+        RESET_WORLD_ONLY
+    }
+
     private static final String DEFAULT_PROTECTED_WORLD = "default";
     private static final String DEFAULT_RESET_WORLD = "resource";
+    private static final String PLAYER_LAST_SEEN_FILE = "player-last-seen.json";
+    private static final String WORLD_LAST_WIPE_FILE = "world-last-wipe.json";
 
     public record WorldSchedule(
             String world,
@@ -86,8 +113,16 @@ public class WorldWipePlugin extends JavaPlugin {
     private volatile List<String> nextScheduledWorlds = new ArrayList<>();
     private volatile boolean schedulingEnabled = false;
     private volatile boolean regenerateOnWipe = false;
+    private volatile boolean offlineTrackingEnabled = true;
+    private volatile boolean offlineTrackingSaveFile = true;
+    private volatile int offlineTrackingMaxDays = 90;
+    private volatile OfflineTrackingMode offlineTrackingMode = OfflineTrackingMode.ALL;
     private volatile HashMap<String, Boolean> worldRegenerateOnWipe = new HashMap<>();
     private volatile HashMap<String, Instant> worldLastWipe = new HashMap<>();
+    private final Map<UUID, Instant> playerLastSeen = new ConcurrentHashMap<>();
+    private final Map<String, Instant> offlineWorldLastWipe = new ConcurrentHashMap<>();
+    private EventRegistration<?, ?> playerConnectRegistration;
+    private EventRegistration<?, ?> playerDisconnectRegistration;
 
     public WorldWipePlugin(@Nonnull JavaPluginInit init) {
         super(init);
@@ -105,6 +140,7 @@ public class WorldWipePlugin extends JavaPlugin {
         loadConfig();
 
         registerCommands();
+        registerEvents();
         LOGGER.at(Level.INFO).log("[WorldWipe] Setup complete!");
     }
 
@@ -122,6 +158,9 @@ public class WorldWipePlugin extends JavaPlugin {
     @Override
     protected void shutdown() {
         LOGGER.at(Level.INFO).log("[WorldWipe] Shutting down...");
+        savePlayerLastSeen();
+        saveOfflineWorldLastWipe();
+        unregisterEvents();
         stopScheduler();
         instance = null;
     }
@@ -132,6 +171,36 @@ public class WorldWipePlugin extends JavaPlugin {
             LOGGER.at(Level.INFO).log("[WorldWipe] Registered /wipe command");
         } catch (Exception e) {
             LOGGER.at(Level.WARNING).withCause(e).log("[WorldWipe] Failed to register commands");
+        }
+    }
+
+    private void registerEvents() {
+        try {
+            if (playerConnectRegistration == null) {
+                playerConnectRegistration = getEventRegistry().register(
+                        PlayerConnectEvent.class,
+                        this::handlePlayerConnect
+                );
+            }
+            if (playerDisconnectRegistration == null) {
+                playerDisconnectRegistration = getEventRegistry().register(
+                        PlayerDisconnectEvent.class,
+                        this::handlePlayerDisconnect
+                );
+            }
+        } catch (Exception e) {
+            LOGGER.at(Level.WARNING).withCause(e).log("[WorldWipe] Failed to register event listeners");
+        }
+    }
+
+    private void unregisterEvents() {
+        if (playerConnectRegistration != null) {
+            playerConnectRegistration.unregister();
+            playerConnectRegistration = null;
+        }
+        if (playerDisconnectRegistration != null) {
+            playerDisconnectRegistration.unregister();
+            playerDisconnectRegistration = null;
         }
     }
     public Instant getNextScheduledWipeAt() {
@@ -175,6 +244,131 @@ public class WorldWipePlugin extends JavaPlugin {
             worlds.add(schedule.world());
         }
         return worlds;
+    }
+
+    private void handlePlayerConnect(PlayerConnectEvent event) {
+        if (event == null) {
+            return;
+        }
+        if (!offlineTrackingEnabled) {
+            return;
+        }
+        World targetWorld = event.getWorld();
+        if (targetWorld == null) {
+            return;
+        }
+        String worldName = targetWorld.getName();
+        if (worldName == null || worldName.isBlank()) {
+            return;
+        }
+        if (isProtectedWorld(worldName, getProtectedWorlds())) {
+            return;
+        }
+
+        List<String> resetWorlds = getResetWorlds();
+        boolean isResetWorld = resetWorlds.stream()
+                .anyMatch(name -> name != null && name.equalsIgnoreCase(worldName));
+        if (!isResetWorld) {
+            return;
+        }
+
+        Instant lastWipe = getOfflineWorldLastWipe(worldName);
+        if (lastWipe == null) {
+            return;
+        }
+
+        PlayerRef playerRef = event.getPlayerRef();
+        UUID playerId = playerRef != null ? playerRef.getUuid() : null;
+        Instant lastSeen = playerId != null ? playerLastSeen.get(playerId) : null;
+
+        if (lastSeen != null && !lastWipe.isAfter(lastSeen)) {
+            return;
+        }
+
+        World destinationWorld = resolveDestinationWorld();
+        if (destinationWorld == null) {
+            return;
+        }
+        if (destinationWorld.getName().equalsIgnoreCase(worldName)) {
+            return;
+        }
+
+        event.setWorld(destinationWorld);
+        scheduleConnectTeleport(event, destinationWorld, playerId);
+    }
+
+    private void scheduleConnectTeleport(
+            PlayerConnectEvent event,
+            World destinationWorld,
+            UUID playerId
+    ) {
+        if (event == null || destinationWorld == null) {
+            return;
+        }
+
+        Holder<EntityStore> holder = event.getHolder();
+        if (holder == null) {
+            return;
+        }
+
+        WorldConfig worldConfig = destinationWorld.getWorldConfig();
+        ISpawnProvider spawnProvider = worldConfig != null ? worldConfig.getSpawnProvider() : null;
+
+        Transform spawn = null;
+        if (spawnProvider != null) {
+            try {
+                spawn = spawnProvider.getSpawnPoint(
+                        destinationWorld,
+                        playerId != null ? playerId : new UUID(0L, 0L)
+                );
+            } catch (Exception ignored) {
+            }
+        }
+        if (spawn == null) {
+            spawn = new Transform();
+        }
+
+        try {
+            Teleport teleport = Teleport.createForPlayer(destinationWorld, spawn);
+            holder.putComponent(Teleport.getComponentType(), teleport);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void handlePlayerDisconnect(PlayerDisconnectEvent event) {
+        if (event == null) {
+            return;
+        }
+        if (!offlineTrackingEnabled) {
+            return;
+        }
+        PlayerRef playerRef = event.getPlayerRef();
+        if (playerRef == null) {
+            return;
+        }
+        UUID playerId = playerRef.getUuid();
+        if (playerId == null) {
+            return;
+        }
+        if (offlineTrackingMode == OfflineTrackingMode.RESET_WORLD_ONLY) {
+            World currentWorld = null;
+            try {
+                currentWorld = Universe.get().getWorld(playerRef.getWorldUuid());
+            } catch (Exception ignored) {
+            }
+            String worldName = currentWorld != null ? currentWorld.getName() : null;
+            if (worldName == null || worldName.isBlank()) {
+                return;
+            }
+            List<String> resetWorlds = getResetWorlds();
+            boolean isResetWorld = resetWorlds.stream()
+                    .anyMatch(name -> name != null && name.equalsIgnoreCase(worldName));
+            if (!isResetWorld) {
+                return;
+            }
+        }
+        playerLastSeen.put(playerId, Instant.now());
+        savePlayerLastSeen();
     }
 
     public List<WorldSchedule> getWorldSchedules() {
@@ -978,9 +1172,27 @@ public class WorldWipePlugin extends JavaPlugin {
         protectedWorlds = normalizeProtectedWorlds(effective.protectedWorlds());
         schedulingEnabled = effective.schedulingEnabled();
         regenerateOnWipe = effective.regenerateOnWipe();
+        offlineTrackingEnabled = effective.offlineTrackingEnabled();
+        offlineTrackingSaveFile = effective.offlineTrackingSaveFile();
+        offlineTrackingMaxDays = Math.max(0, effective.offlineTrackingMaxDays());
+        offlineTrackingMode = resolveOfflineTrackingMode(effective.offlineTrackingMode());
         worldSchedules = normalizeWorldSchedules(effective.worlds(), protectedWorlds);
         worldRegenerateOnWipe = resolveWorldRegenerateMap(effective.worlds());
         worldLastWipe = resolveWorldLastWipeMap(effective.worlds());
+
+        if (!offlineTrackingEnabled) {
+            playerLastSeen.clear();
+            offlineWorldLastWipe.clear();
+        } else if (offlineTrackingSaveFile) {
+            loadPlayerLastSeen();
+            loadOfflineWorldLastWipe();
+        } else {
+            prunePlayerLastSeen();
+            pruneOfflineWorldLastWipe();
+        }
+        if (offlineTrackingEnabled) {
+            mergeWorldLastWipeIntoOffline();
+        }
 
         if (worldSchedules.isEmpty()) {
             LOGGER.at(Level.INFO).log("[WorldWipe] No scheduled worlds configured.");
@@ -1126,6 +1338,7 @@ public class WorldWipePlugin extends JavaPlugin {
                         return;
                     }
 
+                    Instant wipeInstant = Instant.now();
                     if (regenerate) {
                         no.sdev.worldwipe.world.WorldRegenerationService.regenerateWorld(worldName)
                                 .exceptionally(error -> {
@@ -1133,8 +1346,10 @@ public class WorldWipePlugin extends JavaPlugin {
                                             .log("[WorldWipe] Failed to regenerate world '%s'.", worldName);
                                     return null;
                                 });
-                        updateWorldLastWipe(worldName, Instant.now());
+                        updateWorldLastWipe(worldName, wipeInstant);
+                        recordWorldWipe(worldName, wipeInstant);
                     } else {
+                        recordWorldWipe(worldName, wipeInstant);
                         removeWorldSchedule(worldName);
                     }
 
@@ -1167,6 +1382,7 @@ public class WorldWipePlugin extends JavaPlugin {
                     return;
                 }
 
+                Instant wipeInstant = Instant.now();
                 if (regenerate) {
                     no.sdev.worldwipe.world.WorldRegenerationService.regenerateWorld(worldName)
                             .exceptionally(error -> {
@@ -1174,8 +1390,10 @@ public class WorldWipePlugin extends JavaPlugin {
                                         .log("[WorldWipe] Failed to regenerate world '%s'.", worldName);
                                 return null;
                             });
-                    updateWorldLastWipe(worldName, Instant.now());
+                    updateWorldLastWipe(worldName, wipeInstant);
+                    recordWorldWipe(worldName, wipeInstant);
                 } else {
+                    recordWorldWipe(worldName, wipeInstant);
                     removeWorldSchedule(worldName);
                 }
             } catch (Exception e) {
@@ -1340,6 +1558,79 @@ public class WorldWipePlugin extends JavaPlugin {
         return new ScheduleSpec(resolvedMode, resolvedDay, resolvedDayOfMonth, resolvedTime, resolvedZone);
     }
 
+    private OfflineTrackingMode resolveOfflineTrackingMode(String value) {
+        if (value == null || value.isBlank()) {
+            return OfflineTrackingMode.ALL;
+        }
+        try {
+            return OfflineTrackingMode.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return OfflineTrackingMode.ALL;
+        }
+    }
+
+    private void prunePlayerLastSeen() {
+        if (!offlineTrackingEnabled || offlineTrackingMaxDays <= 0) {
+            return;
+        }
+        Instant cutoff = Instant.now().minus(Duration.ofDays(offlineTrackingMaxDays));
+        playerLastSeen.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue().isBefore(cutoff));
+    }
+
+    private void pruneOfflineWorldLastWipe() {
+        if (!offlineTrackingEnabled || offlineTrackingMaxDays <= 0) {
+            return;
+        }
+        Instant cutoff = Instant.now().minus(Duration.ofDays(offlineTrackingMaxDays));
+        offlineWorldLastWipe.entrySet()
+                .removeIf(entry -> entry.getValue() == null || entry.getValue().isBefore(cutoff));
+    }
+
+    private Instant getOfflineWorldLastWipe(String worldName) {
+        if (worldName == null || worldName.isBlank()) {
+            return null;
+        }
+        String key = worldName.trim().toLowerCase(Locale.ROOT);
+        Instant fromOffline = offlineWorldLastWipe.get(key);
+        Instant fromConfig = worldLastWipe.get(key);
+        if (fromOffline == null) {
+            return fromConfig;
+        }
+        if (fromConfig == null) {
+            return fromOffline;
+        }
+        return fromOffline.isAfter(fromConfig) ? fromOffline : fromConfig;
+    }
+
+    private void recordWorldWipe(String worldName, Instant instant) {
+        if (!offlineTrackingEnabled || worldName == null || worldName.isBlank() || instant == null) {
+            return;
+        }
+        String key = worldName.trim().toLowerCase(Locale.ROOT);
+        offlineWorldLastWipe.put(key, instant);
+        saveOfflineWorldLastWipe();
+    }
+
+    private void mergeWorldLastWipeIntoOffline() {
+        if (!offlineTrackingEnabled || worldLastWipe == null || worldLastWipe.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, Instant> entry : worldLastWipe.entrySet()) {
+            String key = entry.getKey();
+            Instant instant = entry.getValue();
+            if (key == null || key.isBlank() || instant == null) {
+                continue;
+            }
+            offlineWorldLastWipe.merge(key.toLowerCase(Locale.ROOT), instant, (current, incoming) ->
+                    incoming.isAfter(current) ? incoming : current
+            );
+        }
+        pruneOfflineWorldLastWipe();
+        if (offlineTrackingSaveFile) {
+            saveOfflineWorldLastWipe();
+        }
+    }
+
     private String formatWorldList(List<String> worlds) {
         if (worlds == null || worlds.isEmpty()) {
             return "none";
@@ -1349,6 +1640,14 @@ public class WorldWipePlugin extends JavaPlugin {
 
     private Path resolveConfigPath() {
         return Paths.get("mods", "WorldWipe", "config.yml");
+    }
+
+    private Path resolvePlayerLastSeenPath() {
+        return Paths.get("mods", "WorldWipe", PLAYER_LAST_SEEN_FILE);
+    }
+
+    private Path resolveWorldLastWipePath() {
+        return Paths.get("mods", "WorldWipe", WORLD_LAST_WIPE_FILE);
     }
 
     private Path resolveLegacyConfigPath() {
@@ -1386,6 +1685,126 @@ public class WorldWipePlugin extends JavaPlugin {
             );
         } catch (Exception e) {
             LOGGER.at(Level.WARNING).withCause(e).log("[WorldWipe] Failed to migrate legacy config.");
+        }
+    }
+
+    private void loadPlayerLastSeen() {
+        if (!offlineTrackingEnabled || !offlineTrackingSaveFile) {
+            return;
+        }
+        playerLastSeen.clear();
+        Path path = resolvePlayerLastSeenPath();
+        if (path == null || Files.notExists(path)) {
+            return;
+        }
+        try {
+            String raw = Files.readString(path);
+            if (raw == null || raw.isBlank()) {
+                return;
+            }
+            Map<String, String> data = GSON.fromJson(raw, STRING_MAP_TYPE);
+            if (data == null || data.isEmpty()) {
+                return;
+            }
+            for (Map.Entry<String, String> entry : data.entrySet()) {
+                if (entry.getKey() == null || entry.getKey().isBlank()) {
+                    continue;
+                }
+                Instant instant = parseInstant(entry.getValue());
+                if (instant == null) {
+                    continue;
+                }
+                try {
+                    UUID playerId = UUID.fromString(entry.getKey());
+                    playerLastSeen.put(playerId, instant);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            prunePlayerLastSeen();
+        } catch (Exception e) {
+            LOGGER.at(Level.WARNING).withCause(e).log("[WorldWipe] Failed to load player last-seen data.");
+        }
+    }
+
+    private void savePlayerLastSeen() {
+        if (!offlineTrackingEnabled || !offlineTrackingSaveFile) {
+            return;
+        }
+        Path path = resolvePlayerLastSeenPath();
+        if (path == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(path.getParent());
+            prunePlayerLastSeen();
+            Map<String, String> out = new HashMap<>();
+            for (Map.Entry<UUID, Instant> entry : playerLastSeen.entrySet()) {
+                if (entry.getKey() == null || entry.getValue() == null) {
+                    continue;
+                }
+                out.put(entry.getKey().toString(), entry.getValue().toString());
+            }
+            Files.writeString(path, GSON.toJson(out));
+        } catch (Exception e) {
+            LOGGER.at(Level.WARNING).withCause(e).log("[WorldWipe] Failed to save player last-seen data.");
+        }
+    }
+
+    private void loadOfflineWorldLastWipe() {
+        if (!offlineTrackingEnabled || !offlineTrackingSaveFile) {
+            return;
+        }
+        offlineWorldLastWipe.clear();
+        Path path = resolveWorldLastWipePath();
+        if (path == null || Files.notExists(path)) {
+            return;
+        }
+        try {
+            String raw = Files.readString(path);
+            if (raw == null || raw.isBlank()) {
+                return;
+            }
+            Map<String, String> data = GSON.fromJson(raw, STRING_MAP_TYPE);
+            if (data == null || data.isEmpty()) {
+                return;
+            }
+            for (Map.Entry<String, String> entry : data.entrySet()) {
+                if (entry.getKey() == null || entry.getKey().isBlank()) {
+                    continue;
+                }
+                Instant instant = parseInstant(entry.getValue());
+                if (instant == null) {
+                    continue;
+                }
+                offlineWorldLastWipe.put(entry.getKey().trim().toLowerCase(Locale.ROOT), instant);
+            }
+            pruneOfflineWorldLastWipe();
+        } catch (Exception e) {
+            LOGGER.at(Level.WARNING).withCause(e).log("[WorldWipe] Failed to load world last-wipe data.");
+        }
+    }
+
+    private void saveOfflineWorldLastWipe() {
+        if (!offlineTrackingEnabled || !offlineTrackingSaveFile) {
+            return;
+        }
+        Path path = resolveWorldLastWipePath();
+        if (path == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(path.getParent());
+            pruneOfflineWorldLastWipe();
+            Map<String, String> out = new HashMap<>();
+            for (Map.Entry<String, Instant> entry : offlineWorldLastWipe.entrySet()) {
+                if (entry.getKey() == null || entry.getValue() == null) {
+                    continue;
+                }
+                out.put(entry.getKey(), entry.getValue().toString());
+            }
+            Files.writeString(path, GSON.toJson(out));
+        } catch (Exception e) {
+            LOGGER.at(Level.WARNING).withCause(e).log("[WorldWipe] Failed to save world last-wipe data.");
         }
     }
 

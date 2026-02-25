@@ -39,6 +39,10 @@ public final class WorldWipeConfig {
     public List<String> protectedWorlds;
     public Boolean schedulingEnabled;
     public Boolean regenerateOnWipe;
+    public Boolean offlineTrackingEnabled;
+    public Boolean offlineTrackingSaveFile;
+    public Integer offlineTrackingMaxDays;
+    public String offlineTrackingMode;
     public Map<String, WorldEntry> worlds;
 
     public static WorldWipeConfig loadOrCreate(Path path) {
@@ -82,7 +86,7 @@ public final class WorldWipeConfig {
             if (!(data instanceof Map)) {
                 return null;
             }
-            return fromMap((Map<String, Object>) data);
+            return fromMap((Map<?, ?>) data);
         } catch (Exception ignored) {
             return null;
         }
@@ -97,6 +101,18 @@ public final class WorldWipeConfig {
         }
         if (regenerateOnWipe == null) {
             regenerateOnWipe = false;
+        }
+        if (offlineTrackingEnabled == null) {
+            offlineTrackingEnabled = true;
+        }
+        if (offlineTrackingSaveFile == null) {
+            offlineTrackingSaveFile = true;
+        }
+        if (offlineTrackingMaxDays == null) {
+            offlineTrackingMaxDays = 90;
+        }
+        if (offlineTrackingMode == null || offlineTrackingMode.isBlank()) {
+            offlineTrackingMode = "ALL";
         }
         if (worlds == null) {
             worlds = new HashMap<>();
@@ -124,7 +140,7 @@ public final class WorldWipeConfig {
             return null;
         }
 
-        return fromMap((Map<String, Object>) data);
+        return fromMap((Map<?, ?>) data);
     }
 
     private static void ensureHeader(Path path) {
@@ -188,6 +204,22 @@ public final class WorldWipeConfig {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schedulingEnabled", config.schedulingEnabled != null ? config.schedulingEnabled : Boolean.FALSE);
         root.put("regenerateOnWipe", config.regenerateOnWipe != null ? config.regenerateOnWipe : Boolean.FALSE);
+        root.put(
+                "offlineTrackingEnabled",
+                config.offlineTrackingEnabled != null ? config.offlineTrackingEnabled : Boolean.TRUE
+        );
+        root.put(
+                "offlineTrackingSaveFile",
+                config.offlineTrackingSaveFile != null ? config.offlineTrackingSaveFile : Boolean.TRUE
+        );
+        root.put(
+                "offlineTrackingMaxDays",
+                config.offlineTrackingMaxDays != null ? config.offlineTrackingMaxDays : 90
+        );
+        root.put(
+                "offlineTrackingMode",
+                config.offlineTrackingMode != null ? config.offlineTrackingMode : "ALL"
+        );
         List<String> protectedWorlds = config.protectedWorlds;
         if (protectedWorlds == null || protectedWorlds.isEmpty()) {
             root.put("protectedWorld", "default");
@@ -249,6 +281,10 @@ public final class WorldWipeConfig {
             List<String> protectedWorlds,
             boolean schedulingEnabled,
             boolean regenerateOnWipe,
+            boolean offlineTrackingEnabled,
+            boolean offlineTrackingSaveFile,
+            int offlineTrackingMaxDays,
+            String offlineTrackingMode,
             Map<String, WorldEntry> worlds
     ) {
     }
@@ -299,10 +335,23 @@ public final class WorldWipeConfig {
         Map<String, WorldEntry> resolvedWorlds = worlds != null ? new HashMap<>(worlds) : new HashMap<>();
         boolean enabled = schedulingEnabled != null && schedulingEnabled;
         boolean regenerate = regenerateOnWipe != null && regenerateOnWipe;
-        return new EffectiveConfig(resolvedProtected, enabled, regenerate, resolvedWorlds);
+        boolean offlineEnabled = offlineTrackingEnabled == null || offlineTrackingEnabled;
+        boolean offlineSaveFile = offlineTrackingSaveFile == null || offlineTrackingSaveFile;
+        int maxDays = offlineTrackingMaxDays != null ? offlineTrackingMaxDays : 90;
+        String mode = offlineTrackingMode != null ? offlineTrackingMode : "ALL";
+        return new EffectiveConfig(
+                resolvedProtected,
+                enabled,
+                regenerate,
+                offlineEnabled,
+                offlineSaveFile,
+                maxDays,
+                mode,
+                resolvedWorlds
+        );
     }
 
-    private static WorldWipeConfig fromMap(Map<String, Object> root) {
+    private static WorldWipeConfig fromMap(Map<?, ?> root) {
         if (root == null) {
             return null;
         }
@@ -315,6 +364,13 @@ public final class WorldWipeConfig {
         config.protectedWorlds = parseStringList(protectedValue);
         config.schedulingEnabled = parseBoolean(root.get("schedulingEnabled"), root.get("enabled"));
         config.regenerateOnWipe = parseBoolean(root.get("regenerateOnWipe"), null);
+        config.offlineTrackingEnabled = parseBoolean(root.get("offlineTrackingEnabled"), null);
+        config.offlineTrackingSaveFile = parseBoolean(root.get("offlineTrackingSaveFile"), null);
+        config.offlineTrackingMaxDays = parseInt(root.get("offlineTrackingMaxDays"));
+        Object trackingMode = root.get("offlineTrackingMode");
+        if (trackingMode != null) {
+            config.offlineTrackingMode = trackingMode.toString();
+        }
 
         Object worldsValue = root.get("worlds");
         if (worldsValue instanceof Map) {
@@ -439,5 +495,23 @@ public final class WorldWipeConfig {
             return false;
         }
         return null;
+    }
+
+    private static Integer parseInt(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        String text = value.toString().trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 }

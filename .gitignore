@@ -31,3 +31,5 @@ Thumbs.db
 /libs/
 /Common/
 **/.cache/
+/tools/
+tools/local-release/

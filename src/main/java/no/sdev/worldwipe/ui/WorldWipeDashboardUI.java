@@ -638,7 +638,7 @@ public class WorldWipeDashboardUI extends InteractiveCustomUIPage<WorldWipeDashb
             return;
         }
 
-        universe.addWorld(world, "default", "default")
+        universe.addWorld(world)
                 .exceptionally(error -> {
                     LOGGER.at(Level.WARNING).withCause(error)
                             .log("[WorldWipe] Failed to create world '%s'.", world);

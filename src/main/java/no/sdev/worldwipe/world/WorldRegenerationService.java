@@ -16,6 +16,6 @@ public final class WorldRegenerationService {
         }
 
         Universe universe = Universe.get();
-        return universe.addWorld(worldName, "default", "default");
+        return universe.addWorld(worldName);
     }
 }
